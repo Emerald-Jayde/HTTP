@@ -11,7 +11,6 @@ import time
 @click.option("-v", is_flag=True, help="Prints debugging messages")
 @click.option(
     "-p",
-    is_flag=True,
     type=int,
     default=8080,
     help="Specifies the port number that the server will listen and server at."
@@ -19,7 +18,6 @@ import time
 )
 @click.option(
     "-d",
-    is_flag=True,
     type=str,
     default="./",
     help="Specifies the directory when launching the application."
@@ -32,36 +30,38 @@ def httpfs(v, p, d):
     usage: httpfs [-v] [-p PORT] [-d PATH-TO-DIR]
     """
 
-    data = ""
     serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    serverSocket.setblocking(False)
-    serverSocket.bind((socket.gethostname(), p))
-    serverSocket.listen(1)
 
-    while True:
-        try:
+    try:
+        serverSocket.bind(("127.0.0.1", p))
+        serverSocket.listen(5)
+        print("HTTP File Server listening on 127.0.0.1, port", str(p))
+
+        while True:
             (clientSocket, address) = serverSocket.accept()
-            print("Connected to: %s", address)
+            threading.Thread(target=handleClientConnection, args=(clientSocket, address)).start()
+    except OSError as e:
+        print(e)
+        sys.exit(1)
+    finally:
+        serverSocket.close()
 
-            while True:
-                buffer = clientSocket.recv(1024)
-                if not data:
-                    break
-                else:
-                    data += "%s%s" % (data, buffer)
-                    
-            print("data received: %s", data)
-        except BlockingIOError as e:
-            if e.args[0] == errno.EAGAIN or e.args[0] == errno.EWOULDBLOCK:
-                print("No data available")
-                time.sleep(3)
+def handleClientConnection(clientSocket, clientAddress):
+    print("Connected to client: ", clientAddress)
+    data = ""
+    try:
+        while True:
+            buffer = clientSocket.recv(1024)
+            if not buffer:
+                break
             else:
-                # a "real" error occurred
-                print(e)
-                sys.exit(1)
+                data += str(buffer.decode("utf-8"))
 
-    clientSocket.close()
-    serverSocket.close()
+        print("data received: ", data)
+    finally:
+        clientSocket.close()
+
+
 
 if __name__ == '__main__':
     httpfs()
