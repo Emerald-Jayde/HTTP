@@ -57,7 +57,7 @@ def handleClientConnection(clientSocket, clientAddress):
             else:
                 data += str(buffer.decode("utf-8"))
 
-        print("data received: ", data)
+        print("Data received from client ", clientAddress, ": ", data)
     finally:
         clientSocket.close()
 
