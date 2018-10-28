@@ -2,6 +2,7 @@ astroid==2.0.4
 bleach==3.0.2
 certifi==2018.10.15
 chardet==3.0.4
+Click==7.0
 docutils==0.14
 future==0.17.0
 idna==2.7
