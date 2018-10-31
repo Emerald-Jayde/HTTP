@@ -3,31 +3,30 @@ import socket
 import threading
 import os
 import sys
-import errno
-import time
+
 from pathlib import Path
 
 CRLF = "\r\n"
 path_to_dir = "./wwwroot"
-
+invalid_path_vals = ["sudo", "su", "-i", "..", "rm", "-r", "-f"]
 
 @click.command()
 @click.option("-v", is_flag=True, help="Prints debugging messages")
 @click.option(
     "-p",
     type=int,
-    name="PORT",
     default=8080,
     help="Specifies the port number that the server will listen and server at."
-    "Default is 8080."
+    "Default is 8080.",
+    show_default=True
 )
 @click.option(
     "-d",
     type=str,
-    name="PATH-TO-DIR",
     default="./wwwroot",
     help="Specifies the directory when launching the application."
-    "Default is the current directory."
+    "Default is the current directory.",
+    show_default=True
 )
 def httpfs(v, p, d):
     """
@@ -35,35 +34,48 @@ def httpfs(v, p, d):
 
     usage: httpfs [-v] [-p PORT] [-d PATH-TO-DIR]
     """
+    global CRLF
+    global path_to_dir
+    global invalid_path_vals
+
+    if d:
+        path_to_dir = d
+
+    tmp_root = Path(path_to_dir)
+    if not tmp_root.is_dir():
+        try:
+            tmp_root.mkdir(parents=True, exist_ok=False)
+        except FileExistsError as e:
+            print("Directory already exists.", end=CRLF)
 
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    invalid_path_vals = ["sudo", "su", "-i", "..", "rm", "-r", "-f"]
-
-    if invalid_path_vals in d:
-        nonlocal path_to_dir = d.default
-        print("Invalid path; using default: ./wwwroot")
 
     try:
         server_socket.bind(("127.0.0.1", p))
         server_socket.listen(5)
-        print("HTTP File Server listening on 127.0.0.1, port", str(p))
+        print("HTTP File Server listening on 127.0.0.1, port", str(p), end=CRLF)
 
         while True:
             (client_socket, address) = server_socket.accept()
-            threading.Thread(target=handle_client_connection,
-                             args=(client_socket, address)).start()
+            threading.Thread(
+                target=handle_client_connection,
+                args=(v, client_socket, address)
+            ).start()
     except OSError as e:
-        print(e)
+        print(e, end=CRLF)
         sys.exit(1)
     finally:
         server_socket.close()
 
 
-def handle_client_connection(client_socket, client_address):
-    print("Connected to client: ", client_address, end="\n")
+def handle_client_connection(vflag, client_socket, client_address):
+    global CRLF
+    global path_to_dir
+    global invalid_path_vals
+
+    print("Connected to client: ", client_address, end=CRLF)
 
     msg_rcvd = ""
-    raw_msg_rcvd = ""
 
     while True:
         buffer = client_socket.recv(1024)
@@ -71,111 +83,112 @@ def handle_client_connection(client_socket, client_address):
             break
         else:
             msg_rcvd += str(buffer.decode("utf-8"))
-            raw_msg_rcvd += buffer
 
     print(
         "Data received from client ",
         client_address,
         ":",
-        nonlocal CRLF,
+        CRLF,
         msg_rcvd,
-        end="\n"
+        end=CRLF
     )
 
     # Splits client message by CRLF
     msg_rcvd_lines = msg_rcvd.splitlines()
 
+    # REQUEST LINE
     # Extract request line
     msg_rcvd_request_line = msg_rcvd_lines()[0].split(" ")
     # Extract HTTP verb
-    verb = request_line[0]
+    verb = msg_rcvd_request_line[0]
     # Extract URL/path
-    path = Path(request_line[1])
+    path = Path(path_to_dir + msg_rcvd_request_line[1])
     # Extract HTTP version
-    protocol_version = request_line[2]
+    protocol_version = msg_rcvd_request_line[2]
 
+    # HEADERS
     # Extract headers
     msg_rcvd_headers = [
          header for header in msg_rcvd_lines[1:] if(":" in header)
     ]
 
-     # Extract message body
-     msg_rcvd_body = "\n".join(
+    # BODY
+    # Extract message body
+    msg_rcvd_body = "\n".join(
         [
             msg_body_line
             for msg_body_line in msg_rcvd_lines[1:]
-                if(":" not in header)
+                if(":" not in msg_body_line)
         ]
     )
 
-      invalid_path_vals = ["sudo", "su", "-i", "..", "rm", "-r", "-f"]
-
-       if invalid_path_vals in path:
-            client_socket.sendall(
-                protocol_version +
-                " 401 Unauthorized" +
-                3 * nonlocal CRLF
-            )
-        else:
-            if verb is "GET":
-                if not path.exists():
-                    client_socket.sendall(
-                        protocol_version +
-                        " 400 Bad Request"+
-                        3 * nonlocal CRLF
-                    )
-                if path.is_file():
-                    try:
-                        file = open(nonlocal path_to_dir + path.__str__(), "rb")
-
-                        resp_line = protocol_version + " 200 OK" + nonlocal CRLF
-                        headers = "Content-Length:" +
-                            os.path.getsize(path.__str__()) +
-                            nonlocal CRLF
-                        msg_body = file.readall() + CRLF
-                        client_socket.sendall(resp_line + headers + msg_body)
-
-                        print("", end="\n")
-                    except OSError as e:
-                        resp_line = protocol_version +
-                            " 500 Internal Server Error" +
-                            nonlocal CRLF
-                        headers = nonlocal CRLF
-                        msg_body = "File could not be opened/read from." +
-                            nonlocal CRLF
-                        client_socket.sendall(resp_line + headers + msg_body)
-
-                        print(e, end="\n")
-                    finally:
-                        file.close()
-            elif verb is "POST":
+    if path.exists() and invalid_path_vals in path.__str__():
+        client_socket.sendall(
+            protocol_version + \
+            " 401 Unauthorized" + \
+            3 * CRLF
+        )
+    elif not path.exists():
+        client_socket.sendall(
+            protocol_version + \
+            " 400 Bad Request"+ \
+            3 * CRLF
+        )
+    else:
+        if verb is "GET":
+            if path.is_file():
                 try:
-                    file = open(nonlocal path_to_dir + path.__str__(), "w+")
-                    file.write()
+                    file = open(path.__str__(), "rb")
 
-                    resp_line = protocol_version + " 200 OK" + nonlocal CRLF
-                    headers = nonlocal CRLF
-                    msg_body = nonlocal CRLF
+                    resp_line = protocol_version + " 200 OK" + CRLF
+                    headers = "Content-Length:" + \
+                        os.path.getsize(path.__str__()) + \
+                        CRLF
+                    msg_body = file.readall() + CRLF
                     client_socket.sendall(resp_line + headers + msg_body)
+
+                    print("", end=CRLF)
                 except OSError as e:
-                    resp_line = protocol_version +
-                        " 500 Internal Server Error" +
-                        nonlocal CRLF
-                    headers = nonlocal CRLF
-                    msg_body = "File could not be opened/written to." +
-                        nonlocal CRLF
+                    resp_line = protocol_version + \
+                        " 500 Internal Server Error" + \
+                        CRLF
+                    headers = CRLF
+                    msg_body = "File could not be opened/read from." + CRLF
                     client_socket.sendall(resp_line + headers + msg_body)
 
-                    print(e, end="\n")
+                    print(e, end=CRLF)
                 finally:
                     file.close()
-            else:
-                resp_line = protocol_version +
-                    " 503 Service Unavilable" +
-                    nonlocal CRLF
-                headers = nonlocal CRLF
-                msg_body = nonlocal CRLF
+            elif path.is_dir():
+                print("DIRECTORY", end=CRLF)
+        elif verb is "POST":
+            try:
+                file = open(path.__str__(), "w+")
+                file.write(msg_rcvd_body)
+
+                resp_line = protocol_version + " 200 OK" + CRLF
+                headers = CRLF
+                msg_body = CRLF
                 client_socket.sendall(resp_line + headers + msg_body)
+            except OSError as e:
+                resp_line = protocol_version + \
+                    " 500 Internal Server Error" + \
+                     CRLF
+                headers =  CRLF
+                msg_body = "File could not be opened/written to." + \
+                     CRLF
+                client_socket.sendall(resp_line + headers + msg_body)
+
+                print(e, end=CRLF)
+            finally:
+                file.close()
+        else:
+            resp_line = protocol_version + \
+                " 503 Service Unavilable" + \
+                CRLF
+            headers = CRLF
+            msg_body = CRLF
+            client_socket.sendall(resp_line + headers + msg_body)
 
         client_socket.close()
 
