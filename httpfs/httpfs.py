@@ -95,6 +95,15 @@ def handle_client_connection(vflag, client_socket, client_address):
 
     # Splits client message by CRLF
     msg_rcvd_lines = msg_rcvd.splitlines()
+    splitter = msg_rcvd_lines.index('')
+
+    # HEADERS
+    # Extract headers
+    msg_rcvd_headers = msg_rcvd_lines[1:splitter]
+
+    # BODY
+    # Extract message body
+    msg_rcvd_body = "\n".join(msg_rcvd_lines[splitter:])
 
     # REQUEST LINE
     # Extract request line
@@ -105,22 +114,6 @@ def handle_client_connection(vflag, client_socket, client_address):
     path = Path(path_to_dir + msg_rcvd_request_line[1])
     # Extract HTTP version
     protocol_version = msg_rcvd_request_line[2]
-
-    # HEADERS
-    # Extract headers
-    msg_rcvd_headers = [
-         header for header in msg_rcvd_lines[1:] if(":" in header)
-    ]
-
-    # BODY
-    # Extract message body
-    msg_rcvd_body = "\n".join(
-        [
-            msg_body_line
-            for msg_body_line in msg_rcvd_lines[1:]
-                if(":" not in msg_body_line)
-        ]
-    )
 
     invalid = any(s in path.__str__() for s in invalid_path_vals)
 
@@ -168,9 +161,15 @@ def handle_client_connection(vflag, client_socket, client_address):
 
             elif path.is_dir():
                 print("DIRECTORY", end=CRLF)
-                # get all files/folders in dir and print
                 files_dirs = os.listdir(path.__str__())
                 print(files_dirs)
+
+                resp_line = protocol_version + " 200 OK" + CRLF
+                headers = CRLF
+                msg_body = "\n".join(files_dirs) + CRLF
+                msg_to_send = resp_line + headers + msg_body
+
+                client_socket.sendall(msg_to_send.encode('utf-8'))
 
         elif verb == 'POST':
             file = open(path.__str__(), "w+")
@@ -179,9 +178,9 @@ def handle_client_connection(vflag, client_socket, client_address):
 
                 resp_line = protocol_version + " 200 OK" + CRLF
                 headers = CRLF
-                msg_body = CRLF
+                msg_body = "test" + CRLF
                 msg_to_send = resp_line + headers + msg_body
-
+                
                 client_socket.sendall(msg_to_send.encode('utf-8'))
 
             except OSError as e:
