@@ -125,19 +125,19 @@ def handle_client_connection(vflag, client_socket, client_address):
     invalid = any(s in path.__str__() for s in invalid_path_vals)
 
     if path.exists() and invalid:
-        client_socket.sendall(
-            protocol_version + \
+        to_send = protocol_version + \
             " 401 Unauthorized" + \
             3 * CRLF
-        )
-    elif not path.exists():
-        client_socket.sendall(
-            protocol_version + \
-            " 400 Bad Request"+ \
-            3 * CRLF
-        )
+        client_socket.sendall(to_send.encode('utf-8'))
+
     else:
-        if verb is "GET":
+        if verb == 'GET':
+            if not path.exists():
+                to_send = protocol_version + \
+                      " 400 Bad Request" + \
+                      3 * CRLF
+                client_socket.sendall(to_send.encode('utf-8'))
+
             if path.is_file():
                 file = open(path.__str__(), "rb")
                 try:
@@ -146,24 +146,33 @@ def handle_client_connection(vflag, client_socket, client_address):
                         os.path.getsize(path.__str__()) + \
                         CRLF
                     msg_body = file.readall() + CRLF
-                    client_socket.sendall(resp_line + headers + msg_body)
+                    msg_to_send = resp_line + headers + msg_body
+
+                    client_socket.sendall(msg_to_send.encode('utf-8'))
 
                     print("", end=CRLF)
+
                 except OSError as e:
                     resp_line = protocol_version + \
                         " 500 Internal Server Error" + \
                         CRLF
                     headers = CRLF
                     msg_body = "File could not be opened/read from." + CRLF
-                    client_socket.sendall(resp_line + headers + msg_body)
+                    msg_to_send = resp_line + headers + msg_body
+
+                    client_socket.sendall(msg_to_send.encode('utf-8'))
 
                     print(e, end=CRLF)
                 finally:
                     file.close()
+
             elif path.is_dir():
                 print("DIRECTORY", end=CRLF)
                 # get all files/folders in dir and print
-        elif verb is "POST":
+                files_dirs = os.listdir(path.__str__())
+                print(files_dirs)
+
+        elif verb == 'POST':
             file = open(path.__str__(), "w+")
             try:
                 file.write(msg_rcvd_body)
@@ -171,15 +180,19 @@ def handle_client_connection(vflag, client_socket, client_address):
                 resp_line = protocol_version + " 200 OK" + CRLF
                 headers = CRLF
                 msg_body = CRLF
-                client_socket.sendall(resp_line + headers + msg_body)
+                msg_to_send = resp_line + headers + msg_body
+
+                client_socket.sendall(msg_to_send.encode('utf-8'))
+
             except OSError as e:
                 resp_line = protocol_version + \
                     " 500 Internal Server Error" + \
                      CRLF
                 headers =  CRLF
-                msg_body = "File could not be opened/written to." + \
-                     CRLF
-                client_socket.sendall(resp_line + headers + msg_body)
+                msg_body = "File could not be opened/written to." + CRLF
+                msg_to_send = resp_line + headers + msg_body
+
+                client_socket.sendall(msg_to_send.encode('utf-8'))
 
                 print(e, end=CRLF)
             finally:
@@ -191,6 +204,7 @@ def handle_client_connection(vflag, client_socket, client_address):
             headers = CRLF
             msg_body = CRLF
             msg_to_send = resp_line + headers + msg_body
+
             client_socket.sendall(msg_to_send.encode('utf-8'))
 
         client_socket.close()
