@@ -32,7 +32,7 @@ def httpfs(v, p, d):
     """
     httpfs is a simple file server.
 
-    usage: httpfs [-v] [-p PORT] [-d PATH-TO-DIR]
+usage: httpfs [-v] [-p PORT] [-d PATH-TO-DIR]A'
     """
     global CRLF
     global path_to_dir
@@ -57,10 +57,11 @@ def httpfs(v, p, d):
 
         while True:
             (client_socket, address) = server_socket.accept()
-            threading.Thread(
-                target=handle_client_connection,
-                args=(v, client_socket, address)
-            ).start()
+            # threading.Thread(
+            #     target=handle_client_connection,
+            #     args=(v, client_socket, address)
+            # ).start()
+            handle_client_connection(v, client_socket, address)
     except OSError as e:
         print(e, end=CRLF)
         sys.exit(1)
@@ -79,10 +80,9 @@ def handle_client_connection(vflag, client_socket, client_address):
 
     while True:
         buffer = client_socket.recv(1024)
-        if not buffer:
+        msg_rcvd += str(buffer.decode("utf-8"))
+        if sys.getsizeof(buffer) < 1024:
             break
-        else:
-            msg_rcvd += str(buffer.decode("utf-8"))
 
     print(
         "Data received from client ",
@@ -98,7 +98,7 @@ def handle_client_connection(vflag, client_socket, client_address):
 
     # REQUEST LINE
     # Extract request line
-    msg_rcvd_request_line = msg_rcvd_lines()[0].split(" ")
+    msg_rcvd_request_line = msg_rcvd_lines[0].split(" ")
     # Extract HTTP verb
     verb = msg_rcvd_request_line[0]
     # Extract URL/path
@@ -122,7 +122,9 @@ def handle_client_connection(vflag, client_socket, client_address):
         ]
     )
 
-    if path.exists() and invalid_path_vals in path.__str__():
+    invalid = any(s in path.__str__() for s in invalid_path_vals)
+
+    if path.exists() and invalid:
         client_socket.sendall(
             protocol_version + \
             " 401 Unauthorized" + \
@@ -137,9 +139,8 @@ def handle_client_connection(vflag, client_socket, client_address):
     else:
         if verb is "GET":
             if path.is_file():
+                file = open(path.__str__(), "rb")
                 try:
-                    file = open(path.__str__(), "rb")
-
                     resp_line = protocol_version + " 200 OK" + CRLF
                     headers = "Content-Length:" + \
                         os.path.getsize(path.__str__()) + \
@@ -161,9 +162,10 @@ def handle_client_connection(vflag, client_socket, client_address):
                     file.close()
             elif path.is_dir():
                 print("DIRECTORY", end=CRLF)
+                # get all files/folders in dir and print
         elif verb is "POST":
+            file = open(path.__str__(), "w+")
             try:
-                file = open(path.__str__(), "w+")
                 file.write(msg_rcvd_body)
 
                 resp_line = protocol_version + " 200 OK" + CRLF
@@ -188,7 +190,8 @@ def handle_client_connection(vflag, client_socket, client_address):
                 CRLF
             headers = CRLF
             msg_body = CRLF
-            client_socket.sendall(resp_line + headers + msg_body)
+            msg_to_send = resp_line + headers + msg_body
+            client_socket.sendall(msg_to_send.encode('utf-8'))
 
         client_socket.close()
 
