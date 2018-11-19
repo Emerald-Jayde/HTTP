@@ -127,7 +127,9 @@ def handle_client_connection(vflag, client_socket, client_address):
         for invalid_path_val in invalid_path_vals
     )
 
-    if path.exists() and invalid:
+    pathExists = path.exists()
+
+    if not pathExists and invalid:
         resp_line = protocol_version + "  401 Unauthorized" + CRLF
         headers = 2 * CRLF
         msg_body = CRLF
